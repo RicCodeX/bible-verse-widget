@@ -1,16 +1,12 @@
 package com.riccodex.verse
 
-import android.app.*
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import androidx.work.*
 import java.util.concurrent.TimeUnit
 
 object Verses {
-    const val ACTION_NEW = "com.riccodex.verse.NEW"
-
     fun prefs(c: Context) = c.getSharedPreferences("verse", Context.MODE_PRIVATE)
     fun translation(c: Context) = prefs(c).getString("tr", "KJV") ?: "KJV"
 
@@ -27,31 +23,14 @@ object Verses {
         val m = AppWidgetManager.getInstance(c)
         for (id in m.getAppWidgetIds(ComponentName(c, VerseWidget::class.java)))
             m.updateAppWidget(id, VerseWidget.views(c))
-        notifyLock(c)
     }
 
+    // fallback: a new verse every 30 minutes even if the phone is never unlocked
     fun schedule(c: Context) {
-        val req = PeriodicWorkRequestBuilder<RefreshWorker>(1, TimeUnit.HOURS).build()
-        WorkManager.getInstance(c).enqueueUniquePeriodicWork("hourly", ExistingPeriodicWorkPolicy.KEEP, req)
-    }
-
-    fun notifyLock(c: Context) {
-        val nm = c.getSystemService(NotificationManager::class.java)
-        val p = prefs(c)
-        if (!p.getBoolean("lock", false)) { nm.cancel(1); return }
-        val ch = NotificationChannel("verse", "Verse", NotificationManager.IMPORTANCE_LOW)
-        ch.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-        nm.createNotificationChannel(ch)
-        val text = p.getString("text", "") ?: ""
-        val open = PendingIntent.getActivity(c, 0, Intent(c, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
-        val n = Notification.Builder(c, "verse")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle((p.getString("ref", "") ?: "") + " · " + translation(c))
-            .setContentText(text)
-            .setStyle(Notification.BigTextStyle().bigText(text))
-            .setVisibility(Notification.VISIBILITY_PUBLIC)
-            .setOngoing(true).setOnlyAlertOnce(true).setContentIntent(open).build()
-        nm.notify(1, n)
+        val wm = WorkManager.getInstance(c)
+        wm.cancelUniqueWork("hourly")
+        val req = PeriodicWorkRequestBuilder<RefreshWorker>(30, TimeUnit.MINUTES).build()
+        wm.enqueueUniquePeriodicWork("every30", ExistingPeriodicWorkPolicy.KEEP, req)
     }
 }
 
